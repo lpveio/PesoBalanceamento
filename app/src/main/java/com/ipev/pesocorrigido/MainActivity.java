@@ -5,6 +5,7 @@ import android.graphics.DashPathEffect;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
+import android.util.Log;
 import android.view.View;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
@@ -21,7 +22,9 @@ import java.util.Locale;
 public class MainActivity extends AppCompatActivity {
 
     private ActivityMainBinding binding;
-    private double somaPeso;
+    private double somaPeso, pesoAlvo, altitudeInicial, altitudeMeta, TempMeta;
+
+    double Ro = 287.053;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -87,45 +90,58 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private void calcularnovaAlt() {
+
+    }
+
     private void calcularTudo() {
         String altitudeStr = binding.textEditAtt.getText().toString().trim();
         String tempStr = binding.textEditTemp.getText().toString().trim();
-        if (altitudeStr.isEmpty() || tempStr.isEmpty()) return;
+        String pesoAlvoStr = binding.textEditAlvo.getText().toString().trim();
+
+
+
+        if (altitudeStr.isEmpty() || tempStr.isEmpty() || pesoAlvoStr.isEmpty()) return;
 
         try {
-            double altitude = Double.parseDouble(altitudeStr);
-            double pa = calcularPa(altitude);
+
+
+            pesoAlvo = Double.parseDouble(pesoAlvoStr);
+            altitudeInicial = Double.parseDouble(altitudeStr);
+            double pa = calcularPa(altitudeInicial);
 
             double temp = Double.parseDouble(tempStr);
             double k = calcularK(temp);
 
-            double R = 287.053;
-            double rho = calcularRho(pa, k, R);
+            double rho = calcularRho(pa, k, Ro);
+            double rho2 = calcularRho2(somaPeso, pesoAlvo);
+
             double sigma = calcularSigma(rho);
 
             binding.textEditSigma.setText(String.format(Locale.US, "%.6f", sigma));
 
             double pesoCorrigido = somaPeso / sigma;
+
+            altitudeMeta = calcularPaux(k, pa, rho2, altitudeInicial);
+
             binding.textEditPesoCorrigido.setText(String.format(Locale.US, "%.0f", pesoCorrigido));
 
-            setarPesoAlvo(pesoCorrigido);
+            setarPesoAlvoGrafico(pesoCorrigido);
 
         } catch (NumberFormatException e) {
             Toast.makeText(this, "Erro ao converter números.", Toast.LENGTH_SHORT).show();
         }
     }
 
-    private void setarPesoAlvo(double pesoCorrigido) {
-        String pesoAlvoStr = binding.textEditAlvo.getText().toString().trim();
-        if (pesoAlvoStr.isEmpty()) return;
+    private void setarPesoAlvoGrafico(double pesoCorrigido) {
 
         try {
-            double pesoAlvo = Double.parseDouble(pesoAlvoStr);
             adicionarPontoAoGrafico(pesoAlvo, pesoCorrigido);
         } catch (NumberFormatException e) {
             Toast.makeText(this, "Erro ao converter peso alvo.", Toast.LENGTH_SHORT).show();
         }
     }
+
 
     private void adicionarPontoAoGrafico(double pesoAlvo_, double pesoCorrigido_) {
         ArrayList<Entry> entradasA = new ArrayList<>();
@@ -209,11 +225,49 @@ public class MainActivity extends AppCompatActivity {
         return tempCelsius + 273.15;
     }
 
+    private double calcularAltitudeZP(double pa) {
+        return (1 - Math.pow(pa / 1013.25, 1 / 5.25588)) / 6.87559e-6;
+    }
+
     private double calcularRho(double pa, double tempKelvin, double r) {
         return pa * 100 / (r * tempKelvin);
     }
 
     private double calcularSigma(double rho) {
         return rho / 1.225;
+    }
+
+    private double calcularRho2(double massa , double msigma) {
+        return (massa/msigma) * 1.225;
+    }
+
+    private double calcularPaux (double tar, double painic, double rho, double zpinic){
+        double taux = tar;
+        double roinic = (painic*100)/(Ro * tar);
+        double paux = (painic * rho * tar) /(roinic * tar) ;
+        double zpaux = calcularAltitudeZP(paux);
+        double dzp = zpaux - zpinic;
+        while (Math.abs(dzp) >= 10.0) {
+            double dtemp = (2.0 * dzp) / 1000.0;
+            taux -= dtemp;
+            TempMeta = taux;
+            double zpaux2 = zpaux;
+            double paux2 = (painic * rho * taux) / (roinic * tar);
+            zpaux = calcularAltitudeZP(paux2);
+            dzp = zpaux - zpaux2;
+
+        }
+
+        double zpi = Math.round((zpaux/20)*20);
+        Log.d("Paux", "ZPI: " + zpi );
+
+        binding.textEditAltMeta.setText(String.format(Locale.US, "%.0f", zpi));
+        binding.textEditTempMeta.setText(String.format(Locale.US, "%.1f", taux - 273.15));
+        return paux;
+
+    }
+
+    private double calcularNovaTemp(double alt_fixa , double nova_alt, double temp) {
+        return temp - 0.0065 * 0.3048 * (nova_alt - alt_fixa);
     }
 }
